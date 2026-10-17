@@ -1,6 +1,9 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Net.NetworkInformation;
 using System.Text.RegularExpressions;
 using System.Windows;
 using Microsoft.Win32;
@@ -219,6 +222,10 @@ public partial class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(service.Output))
                 report.AppendLine(service.Output.Trim());
 
+            report.AppendLine();
+            report.AppendLine("=== СЕТЬ, DNS И МАРШРУТЫ ===");
+            await AppendNetworkDiagnosticsAsync(report, config);
+            
             var wgExe = Path.Combine(Path.GetDirectoryName(wg) ?? "", "wg.exe");
             if (!File.Exists(wgExe))
             {
@@ -295,6 +302,115 @@ public partial class MainWindow : Window
         report.AppendLine("Важно: состояние службы и handshake не гарантируют доступность Codex или правильную маршрутизацию всего трафика.");
         MessageBox.Show(report.ToString(), "Диагностика GodEx",
             MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private static async Task AppendNetworkDiagnosticsAsync(System.Text.StringBuilder report, string tunnelName)
+    {
+        try
+        {
+            var adapters = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == OperationalStatus.Up)
+                .ToList();
+
+            report.AppendLine("Активные сетевые адаптеры:");
+            foreach (var adapter in adapters)
+            {
+                var props = adapter.GetIPProperties();
+                var ipv4 = props.UnicastAddresses
+                    .Where(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    .Select(a => a.Address.ToString()).ToArray();
+                var dns = props.DnsAddresses.Select(a => a.ToString()).ToArray();
+                var gateways = props.GatewayAddresses
+                    .Select(g => g.Address.ToString())
+                    .Where(g => g != "0.0.0.0" && g != "::").ToArray();
+
+                report.AppendLine($"• {adapter.Name} [{adapter.NetworkInterfaceType}] — {adapter.OperationalStatus}");
+                if (ipv4.Length > 0) report.AppendLine($"  IPv4: {string.Join(", ", ipv4)}");
+                if (gateways.Length > 0) report.AppendLine($"  Шлюз: {string.Join(", ", gateways)}");
+                report.AppendLine($"  DNS: {(dns.Length == 0 ? "не указаны" : string.Join(", ", dns))}");
+            }
+
+            var tunnelAdapters = adapters.Where(a =>
+                    a.Name.Contains(tunnelName, StringComparison.OrdinalIgnoreCase) ||
+                    a.Description.Contains(tunnelName, StringComparison.OrdinalIgnoreCase) ||
+                    a.Name.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                    a.Description.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                    a.Description.Contains("Wintun", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            report.AppendLine();
+            if (tunnelAdapters.Count == 0)
+            {
+                report.AppendLine("⚠ Адаптер, похожий на VPN-туннель, не найден среди активных интерфейсов.");
+                report.AppendLine("Это не доказывает, что VPN не работает: название интерфейса зависит от установки WireGuard.");
+            }
+            else
+            {
+                report.AppendLine("✓ Найдены активные адаптеры, похожие на VPN:");
+                foreach (var adapter in tunnelAdapters)
+                    report.AppendLine($"  {adapter.Name} — {adapter.Description}");
+            }
+
+            report.AppendLine();
+            var routeResult = await RunDiagnosticCommandAsync("route.exe", new[] { "print", "-4" }, 5000);
+            if (routeResult.ExitCode == 0)
+            {
+                report.AppendLine("IPv4 таблица маршрутизации (фрагмент):");
+                var routeLines = routeResult.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                var interesting = routeLines.Where(line =>
+                    line.Contains("0.0.0.0") ||
+                    tunnelAdapters.Any(a => line.Contains(a.Name, StringComparison.OrdinalIgnoreCase)) ||
+                    line.Contains(tunnelName, StringComparison.OrdinalIgnoreCase))
+                    .Take(16).ToArray();
+                report.AppendLine(interesting.Length == 0
+                    ? "  Не удалось выделить default/VPN-маршруты автоматически; полная таблица не показана."
+                    : string.Join(Environment.NewLine, interesting.Select(line => "  " + line.Trim())));
+                report.AppendLine("Маршруты показываются как диагностика; наличие default route само по себе не доказывает, что весь трафик идёт через VPN.");
+            }
+            else
+            {
+                report.AppendLine("✗ Не удалось прочитать IPv4 таблицу маршрутизации.");
+                if (!string.IsNullOrWhiteSpace(routeResult.Output))
+                    report.AppendLine(routeResult.Output);
+            }
+
+            report.AppendLine();
+            report.AppendLine("DNS-проверка:");
+            foreach (var host in new[] { "example.com", "www.cloudflare.com" })
+            {
+                try
+                {
+                    var addresses = await Dns.GetHostAddressesAsync(host).WaitAsync(TimeSpan.FromSeconds(5));
+                    report.AppendLine(addresses.Length > 0
+                        ? $"✓ {host}: разрешён в {string.Join(", ", addresses.Take(4).Select(a => a.ToString()))}"
+                        : $"✗ {host}: DNS не вернул адресов");
+                }
+                catch (Exception ex)
+                {
+                    report.AppendLine($"✗ {host}: {ex.GetType().Name} — {ex.Message}");
+                }
+            }
+
+            report.AppendLine();
+            report.AppendLine("HTTPS-проверка доступности:");
+            using var handler = new HttpClientHandler { AllowAutoRedirect = true };
+            using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(7) };
+            try
+            {
+                using var response = await client.GetAsync("https://example.com/");
+                report.AppendLine($"✓ https://example.com/ ответил HTTP {(int)response.StatusCode} ({response.StatusCode})");
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine($"✗ HTTPS-запрос не прошёл: {ex.GetType().Name} — {ex.Message}");
+            }
+
+            report.AppendLine("Проверки используют системные DNS и маршруты Windows. Чтобы доказать, что запросы прошли именно через VPN, сопоставь маршрут к целевому адресу с интерфейсом туннеля и повтори тест с отключённым туннелем для сравнения.");
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine("✗ Ошибка сетевой диагностики: " + ex.Message);
+        }
     }
 
     private static async Task<(int ExitCode, string Output)> RunDiagnosticCommandAsync(
