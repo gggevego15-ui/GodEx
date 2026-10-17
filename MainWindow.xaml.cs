@@ -97,7 +97,9 @@ public partial class MainWindow : Window
                 Verb = "runas",
                 WorkingDirectory = Path.GetDirectoryName(wireGuard) ?? AppContext.BaseDirectory
             };
-            foreach (var arg in args) start.ArgumentList.Add(arg);
+            start.Arguments = _connected
+                ? $"/uninstalltunnelservice \"{tunnelName}\""
+                : $"/installtunnelservice \"{_configPath}\"";
 
             using var process = Process.Start(start);
             if (process is null)
