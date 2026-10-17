@@ -33,13 +33,13 @@
       <Border Width="38" Height="38" CornerRadius="13" Background="#8B7CFF" VerticalAlignment="Center">
        <TextBlock Text="G" FontSize="23" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
       </Border>
-      <StackPanel Margin="11,0,0,0" VerticalAlignment="Center"><TextBlock Text="GodEx" FontSize="21" FontWeight="Bold"/><TextBlock Text="PRIVATE NETWORK" FontSize="9" Foreground="#9AA6C5" CharacterSpacing="170"/></StackPanel>
+      <StackPanel Margin="11,0,0,0" VerticalAlignment="Center"><TextBlock Text="GodEx" FontSize="21" FontWeight="Bold"/><TextBlock Text="PRIVATE NETWORK" FontSize="9" Foreground="#9AA6C5"/></StackPanel>
      </StackPanel>
-     <TextBlock Text="WORKSPACE" Foreground="#687493" FontSize="10" Margin="12,0,0,8" CharacterSpacing="130"/>
+     <TextBlock Text="WORKSPACE" Foreground="#687493" FontSize="10" Margin="12,0,0,8"/>
      <Button Style="{StaticResource NavButton}" Background="#272747" Foreground="White" Content="◉   Обзор"/>
      <Button Style="{StaticResource NavButton}" Content="◎   Серверы" Click="Servers_Click"/>
      <Button Style="{StaticResource NavButton}" Content="⌁   Диагностика" Click="Diagnostics_Click"/>
-     <TextBlock Text="ПРИЛОЖЕНИЕ" Foreground="#687493" FontSize="10" Margin="12,28,0,8" CharacterSpacing="130"/>
+     <TextBlock Text="ПРИЛОЖЕНИЕ" Foreground="#687493" FontSize="10" Margin="12,28,0,8"/>
      <Button Style="{StaticResource NavButton}" Content="⚙   Настройки" Click="Settings_Click"/>
     </StackPanel>
     <Border DockPanel.Dock="Bottom" Background="#1A2031" CornerRadius="14" Padding="12" Margin="0,20,0,0">
@@ -73,9 +73,9 @@
      </Grid>
     </Border>
     <Grid Margin="0,18,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-     <Border Style="{StaticResource GlassCard}" Margin="0,0,7,0"><StackPanel><TextBlock Text="ТЕКУЩИЙ СЕРВЕР" Foreground="#929DBA" FontSize="10" CharacterSpacing="80"/><TextBlock x:Name="ServerText" Text="Не выбран" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,4"/><TextBlock Text="Выбери точку подключения" Foreground="#929DBA" FontSize="11"/></StackPanel></Border>
-     <Border Grid.Column="1" Style="{StaticResource GlassCard}" Margin="7,0"><StackPanel><TextBlock Text="ЗАДЕРЖКА" Foreground="#929DBA" FontSize="10" CharacterSpacing="80"/><TextBlock Text="— ms" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,4"/><TextBlock Text="Нет активного соединения" Foreground="#929DBA" FontSize="11"/></StackPanel></Border>
-     <Border Grid.Column="2" Style="{StaticResource GlassCard}" Margin="7,0,0,0"><StackPanel><TextBlock Text="ЗАЩИТА" Foreground="#929DBA" FontSize="10" CharacterSpacing="80"/><TextBlock Text="Неактивна" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,4"/><TextBlock Text="Туннель не настроен" Foreground="#929DBA" FontSize="11"/></StackPanel></Border>
+     <Border Style="{StaticResource GlassCard}" Margin="0,0,7,0"><StackPanel><TextBlock Text="ТЕКУЩИЙ СЕРВЕР" Foreground="#929DBA" FontSize="10"/><TextBlock x:Name="ServerText" Text="Не выбран" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,4"/><TextBlock Text="Выбери точку подключения" Foreground="#929DBA" FontSize="11"/></StackPanel></Border>
+     <Border Grid.Column="1" Style="{StaticResource GlassCard}" Margin="7,0"><StackPanel><TextBlock Text="ЗАДЕРЖКА" Foreground="#929DBA" FontSize="10"/><TextBlock Text="— ms" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,4"/><TextBlock Text="Нет активного соединения" Foreground="#929DBA" FontSize="11"/></StackPanel></Border>
+     <Border Grid.Column="2" Style="{StaticResource GlassCard}" Margin="7,0,0,0"><StackPanel><TextBlock Text="ЗАЩИТА" Foreground="#929DBA" FontSize="10"/><TextBlock Text="Неактивна" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,4"/><TextBlock Text="Туннель не настроен" Foreground="#929DBA" FontSize="11"/></StackPanel></Border>
     </Grid>
     <TextBlock Text="Быстрый доступ" FontSize="18" FontWeight="SemiBold" Margin="2,28,0,13"/>
     <UniformGrid Columns="2">
