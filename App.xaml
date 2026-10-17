@@ -1,0 +1,7 @@
+<Application x:Class="GodEx.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" StartupUri="MainWindow.xaml">
+  <Application.Resources>
+    <SolidColorBrush x:Key="PanelBrush" Color="#171B2B"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#9AA6C5"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#8B7CFF"/>
+  </Application.Resources>
+</Application>
