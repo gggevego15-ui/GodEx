@@ -164,13 +164,183 @@ public partial class MainWindow : Window
 
     private void Servers_Click(object sender, RoutedEventArgs e) => ImportConfig_Click(sender, e);
 
-    private void Diagnostics_Click(object sender, RoutedEventArgs e)
+    private async void Diagnostics_Click(object sender, RoutedEventArgs e)
     {
+        if (_busy)
+        {
+            MessageBox.Show("Дождись завершения текущей операции.", "Диагностика GodEx",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         var wg = FindWireGuard();
-        var config = _configPath is null ? "не выбрана" : Path.GetFileName(_configPath);
-        MessageBox.Show(
-            $"WireGuard for Windows: {(wg is null ? "не найден" : "найден")}\nКонфигурация: {config}\nСостояние, известное приложению: {(_connected ? "команда запуска выполнена" : "не подключено")}\n\nЭто не проверка внешнего IP и не гарантия доступности Codex.",
-            "Диагностика GodEx", MessageBoxButton.OK, MessageBoxImage.Information);
+        var config = _configPath is null ? null : Path.GetFileNameWithoutExtension(_configPath);
+        var report = new System.Text.StringBuilder();
+        report.AppendLine("GODEX — ДИАГНОСТИКА VPN");
+        report.AppendLine($"Время: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        report.AppendLine();
+
+        if (wg is null)
+        {
+            report.AppendLine("✗ WireGuard for Windows: не найден");
+            report.AppendLine("Установи официальный клиент: https://www.wireguard.com/install/");
+            report.AppendLine("Проверка туннеля невозможна.");
+            MessageBox.Show(report.ToString(), "Диагностика GodEx",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        report.AppendLine("✓ WireGuard for Windows: найден");
+        report.AppendLine($"Исполняемый файл: {wg}");
+        if (config is null)
+        {
+            report.AppendLine("✗ Конфигурация: не импортирована");
+            report.AppendLine("Импортируй .conf, затем повтори диагностику.");
+            MessageBox.Show(report.ToString(), "Диагностика GodEx",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        report.AppendLine($"Конфигурация: {config}");
+        report.AppendLine();
+
+        try
+        {
+            var serviceName = "WireGuardTunnel$" + config;
+            var service = await RunDiagnosticCommandAsync("sc.exe", new[] { "query", serviceName }, 5000);
+            var serviceRunning = service.ExitCode == 0 &&
+                System.Text.RegularExpressions.Regex.IsMatch(
+                    service.Output, @"STATE\s*:\s*4\s+RUNNING",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            report.AppendLine(serviceRunning
+                ? "✓ Служба туннеля: RUNNING"
+                : "✗ Служба туннеля: не подтверждена как RUNNING");
+            if (!string.IsNullOrWhiteSpace(service.Output))
+                report.AppendLine(service.Output.Trim());
+
+            var wgExe = Path.Combine(Path.GetDirectoryName(wg) ?? "", "wg.exe");
+            if (!File.Exists(wgExe))
+            {
+                report.AppendLine();
+                report.AppendLine("⚠ wg.exe не найден рядом с WireGuard. Проверка handshake недоступна.");
+            }
+            else
+            {
+                var handshakes = await RunDiagnosticCommandAsync(wgExe,
+                    new[] { "show", config, "latest-handshakes" }, 5000);
+                report.AppendLine();
+                if (handshakes.ExitCode != 0)
+                {
+                    report.AppendLine("✗ Не удалось получить latest-handshakes.");
+                    if (!string.IsNullOrWhiteSpace(handshakes.Output))
+                        report.AppendLine(handshakes.Output.Trim());
+                }
+                else
+                {
+                    var timestamps = new List<long>();
+                    foreach (var line in handshakes.Output.Split(new[] { '\r', '\n' },
+                                 StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var parts = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length >= 2 && long.TryParse(parts[^1], out var timestamp))
+                            timestamps.Add(timestamp);
+                    }
+
+                    var latest = timestamps.Where(t => t > 0).DefaultIfEmpty(0).Max();
+                    if (latest == 0)
+                    {
+                        report.AppendLine("✗ WireGuard handshake: пока не подтверждён");
+                        report.AppendLine("Возможные причины: сервер недоступен, неверные ключи/Endpoint или ещё не было обмена.");
+                    }
+                    else
+                    {
+                        var age = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - latest;
+                        report.AppendLine($"✓ Последний handshake: {DateTimeOffset.FromUnixTimeSeconds(latest).ToLocalTime():yyyy-MM-dd HH:mm:ss}");
+                        report.AppendLine(age <= 180
+                            ? $"✓ Handshake свежий ({Math.Max(0, age)} сек. назад)"
+                            : $"⚠ Последний handshake был {Math.Max(0, age)} сек. назад; он может быть устаревшим.");
+                    }
+
+                    var transfer = await RunDiagnosticCommandAsync(wgExe,
+                        new[] { "show", config, "transfer" }, 5000);
+                    if (transfer.ExitCode == 0)
+                    {
+                        long rx = 0, tx = 0;
+                        foreach (var line in transfer.Output.Split(new[] { '\r', '\n' },
+                                     StringSplitOptions.RemoveEmptyEntries))
+                        {
+                            var parts = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                            if (parts.Length >= 3 &&
+                                long.TryParse(parts[^2], out var received) &&
+                                long.TryParse(parts[^1], out var sent))
+                            {
+                                rx += received;
+                                tx += sent;
+                            }
+                        }
+                        report.AppendLine($"Трафик peer-ов: принято {FormatBytes(rx)}, отправлено {FormatBytes(tx)}");
+                        report.AppendLine("Примечание: счётчики могут быть нулевыми, если трафик ещё не проходил.");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine();
+            report.AppendLine("✗ Ошибка диагностики: " + ex.Message);
+        }
+
+        report.AppendLine();
+        report.AppendLine("Важно: состояние службы и handshake не гарантируют доступность Codex или правильную маршрутизацию всего трафика.");
+        MessageBox.Show(report.ToString(), "Диагностика GodEx",
+            MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private static async Task<(int ExitCode, string Output)> RunDiagnosticCommandAsync(
+        string fileName, IEnumerable<string> arguments, int timeoutMs)
+    {
+        var start = new ProcessStartInfo
+        {
+            FileName = fileName,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        foreach (var argument in arguments)
+            start.ArgumentList.Add(argument);
+
+        using var process = Process.Start(start)
+            ?? throw new InvalidOperationException($"Не удалось запустить {Path.GetFileName(fileName)}.");
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(timeoutMs);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw new TimeoutException($"Команда {Path.GetFileName(fileName)} превысила лимит {timeoutMs} мс.");
+        }
+
+        var output = (await stdout) + Environment.NewLine + (await stderr);
+        return (process.ExitCode, output.Trim());
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        double value = Math.Max(0, bytes);
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+        return $"{value:0.##} {units[unit]}";
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
