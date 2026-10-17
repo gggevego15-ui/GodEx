@@ -1,0 +1,2 @@
+# GodEx
+An vpn for RUSSIAN PEOPLE WHO LIKE CODEX
