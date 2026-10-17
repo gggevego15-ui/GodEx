@@ -8,6 +8,8 @@ GodEx is a Windows desktop app for managing a WireGuard tunnel, with a custom da
 - Locate the official WireGuard for Windows executable in standard Program Files folders.
 - Request Windows administrator approval and call WireGuard's tunnel service install/uninstall commands.
 - Windows x64 self-contained EXE workflow using GitHub Actions.
+- VPN diagnostics query the Windows tunnel service and WireGuard handshake/transfer counters, enumerate active network adapters and configured DNS servers, inspect IPv4 routes, resolve test hostnames, and perform an HTTPS connectivity probe.
+- DNS/route/HTTPS checks reflect the current Windows network state; they are not conclusive proof that all traffic uses the VPN. Compare routes and repeat tests with the tunnel enabled/disabled to investigate routing.
 
 ## Important limits
 
